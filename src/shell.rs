@@ -110,6 +110,19 @@ impl Shell {
     }
 }
 
+/// signal_handlerスレッド
+fn spawn_sig_handler(tx: Sender<WorkerMsg>) -> Result<(), DynError> {
+    let mut signals = Signals::new(&[SIGINT, SIGTSTP, SIGCHLD])?;
+    thread::spawn(move || {
+        for sig in signals.forever() {
+            // シグナルを受信しworkerスレッドに送信
+            tx.send(WorkerMsg::Signal(sig)).unwrap();
+        }
+    });
+
+    Ok(())
+}
+
 /// システムコール呼び出しのラッパ。EINTRならリトライ
 fn syscall<F, T>(f: F) -> Result<T, nix::Error>
     where
