@@ -19,6 +19,18 @@ use std::{
     thread,
 };
 
+/// workerスレッドが受信するメッセージ
+enum WorkerMsg {
+    Signal(i32), // シグナルを受信
+    Cmd(String), // コマンド入力
+}
+
+/// mainスレッドが受信するメッセージ
+enum ShellMsg {
+    Continue(i32), // シェルの読み込みを再開。i32は最後の終了コード
+    Quit(i32),     // シェルを終了。i32はシェルの終了コード
+}
+
 /// システムコール呼び出しのラッパ。EINTRならリトライ
 fn syscall<F, T>(f: F) -> Result<T, nix::Error>
     where
