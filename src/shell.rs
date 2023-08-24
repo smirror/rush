@@ -19,6 +19,24 @@ use std::{
     thread,
 };
 
+
+/// ドロップ時にクロージャfを呼び出す型
+struct CleanUp<F>
+    where
+        F: Fn(),
+{
+    f: F,
+}
+
+impl<F> Drop for CleanUp<F>
+    where
+        F: Fn(),
+{
+    fn drop(&mut self) {
+        (self.f)()
+    }
+}
+
 /// workerスレッドが受信するメッセージ
 enum WorkerMsg {
     Signal(i32), // シグナルを受信
