@@ -598,3 +598,53 @@ fn syscall<F, T>(f: F) -> Result<T, nix::Error>
         }
     }
 }
+
+/// プロセスグループIDを指定してfork & exec
+/// pgidが0の場合は子プロセスのPIDが、プロセスグループIDとなる
+///
+/// - inputがSome(fd)の場合は、標準入力をfdと設定
+/// - outputSome(fd)の場合は、標準出力をfdと設定
+fn fork_exec(
+    pgid: Pid,
+    filename: &str,
+    args: &[&str],
+    input: Option<i32>,
+    output: Option<i32>,
+) -> Result<Pid, DynError> {
+    let filename = CString::new(filename).unwrap();
+    let args: Vec<CString> = args.iter().map(|s| CString::new(*s).unwrap()).collect();
+
+    match syscall(|| unsafe { fork() })? {
+        ForkResult::Parent { child, .. } => {
+            // 子プロセスのプロセスグループIDをpgidに設定
+            setpgid(child, pgid).unwrap();
+            Ok(child)
+        }
+        ForkResult::Child => {
+            // 子プロセスのプロセスグループIDをpgidに設定
+            setpgid(Pid::from_raw(0), pgid).unwrap();
+
+            // 標準入出力を設定
+            if let Some(infd) = input {
+                syscall(|| dup2(infd, libc::STDIN_FILENO)).unwrap();
+            }
+            if let Some(outfd) = output {
+                syscall(|| dup2(outfd, libc::STDOUT_FILENO)).unwrap();
+            }
+
+            // signal_hookで利用されるUNIXドメインソケットとpipeをクローズ
+            for i in 3..=6 {
+                let _ = syscall(|| unistd::close(i));
+            }
+
+            // 実行ファイルをメモリに読み込み
+            match execvp(&filename, &args) {
+                Err(_) => {
+                    unistd::write(libc::STDERR_FILENO, "不明なコマンドを実行\n".as_bytes()).ok();
+                    exit(1);
+                }
+                Ok(_) => unreachable!(),
+            }
+        }
+    }
+}
